@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
 import {ERC721} from "solmate/tokens/ERC721.sol";
@@ -135,7 +135,7 @@ contract RecoveryVoting is Owned {
         bool recovered;
     }
 
-    mapping(uint256 => mapping(uint256 => bool)) proposalForGovernanceTokenId;
+    mapping(uint256 => mapping(uint256 => bool)) tokenProposedThisRound;
     mapping(uint256 => Proposal) proposals;
 
     uint256 currentProposalId;
@@ -148,6 +148,10 @@ contract RecoveryVoting is Owned {
         uint256 tokenId,
         string calldata tokenURI
     ) external {
+        require(
+            ERC721(governanceContract).ownerOf(governanceTokenId) == msg.sender,
+            "you don't own this token"
+        );
         require(currentRoundStartTime != 0, "no round active");
         require(
             currentRoundStartTime + config.proposalDuration < block.timestamp,
@@ -158,15 +162,11 @@ contract RecoveryVoting is Owned {
             "this recovery doesn't exist"
         );
         require(
-            ERC721(governanceContract).ownerOf(governanceTokenId) == msg.sender,
-            "you don't own this token"
-        );
-        require(
-            !proposalForGovernanceTokenId[currentRound][governanceTokenId],
+            !tokenProposedThisRound[currentRound][governanceTokenId],
             "this token has already proposed this round"
         );
 
-        proposalForGovernanceTokenId[currentRound][governanceTokenId] = true;
+        tokenProposedThisRound[currentRound][governanceTokenId] = true;
         uint256 proposalId = ++currentProposalId;
         Proposal memory proposal = Proposal(
             proposalId,
@@ -274,7 +274,10 @@ contract RecoveryVoting is Owned {
     event VotePassed(uint256 indexed proposalId);
 
     function _checkVotePassed(uint256 proposalId) internal {
-        if (proposals[proposalId].voteCount >= config.voteThreshold) {
+        if (
+            proposals[proposalId].voteCount >= config.voteThreshold &&
+            !proposals[proposalId].vetoed
+        ) {
             proposals[proposalId].passed = true;
             emit VotePassed(proposalId);
         }
